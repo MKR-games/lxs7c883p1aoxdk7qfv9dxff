@@ -1769,6 +1769,435 @@ function renderList() {
   updateFont();
 })();
 </script>
-  
+<style>
+  #characterStartNotice {
+    position: fixed; inset: 0; box-sizing: border-box;
+    width: min(420px, calc(100% - 32px)); max-width: calc(100% - 32px);
+    max-height: calc(100dvh - 32px); margin: auto; padding: 28px 24px;
+    border: 1px solid #d5dce7; border-radius: 20px; background: #fff;
+    color: #142139; box-shadow: 0 20px 70px #0004; overflow-y: auto;
+    overscroll-behavior: contain; font-family: inherit; text-align: left;
+  }
+  #characterStartNotice:not([open]) { display: none !important; }
+  #characterStartNotice::backdrop { background: rgba(8,17,32,.76); }
+  #characterStartNotice .csn-label {
+    margin: 0 0 12px; font-size: 12px; font-weight: 800;
+    letter-spacing: .08em; color: #526680;
+  }
+  #characterStartNotice h2 {
+    margin: 0 0 16px; font-size: 25px; line-height: 1.45;
+    font-weight: 900; color: #133d7a; word-break: keep-all;
+  }
+  #characterStartNotice p {
+    margin: 0 0 14px; font-size: 16px; line-height: 1.8;
+    word-break: keep-all; overflow-wrap: anywhere;
+  }
+  #characterStartNotice .csn-private {
+    padding: 14px; background: #f1f4f8; border-radius: 12px; color: #344156;
+  }
+  #characterStartNotice .csn-help { color: #526680; font-size: 14px; }
+  #characterStartNotice button {
+    box-sizing: border-box; display: block; width: 100%; min-height: 48px;
+    margin: 20px 0 0; padding: 12px; border: 0; border-radius: 12px;
+    background: #133d7a; color: #fff; font-family: inherit;
+    font-size: 16px; line-height: 1.5; font-weight: 800; cursor: pointer;
+  }
+  #characterStartNotice button:focus-visible {
+    outline: 3px solid #db9f1d; outline-offset: 3px;
+  }
+
+  #characterToolbarTutorial {
+    position: fixed; inset: 0; box-sizing: border-box;
+    width: 100%; height: 100%; max-width: none; max-height: none;
+    margin: 0; padding: 0; border: 0; background: transparent;
+    color: #142139; overflow: hidden; overscroll-behavior: contain;
+    font-family: inherit; text-align: left;
+  }
+  #characterToolbarTutorial:not([open]) { display: none !important; }
+  #characterToolbarTutorial::backdrop { background: transparent; }
+  #characterToolbarTutorial .ctt-spot {
+    position: fixed; box-sizing: border-box; pointer-events: none;
+    border: 3px solid #f4ce6c; border-radius: 12px;
+    box-shadow: 0 0 0 9999px rgba(8, 17, 32, .73);
+  }
+  #characterToolbarTutorial .ctt-panel {
+    position: fixed; box-sizing: border-box;
+    width: min(360px, calc(100% - 24px)); margin: 0;
+    padding: 22px; border: 1px solid #d5dce7; border-radius: 18px;
+    background: #fff; box-shadow: 0 12px 40px #0004;
+    overflow-y: auto; overscroll-behavior: contain;
+    font-size: 16px; line-height: 1.65;
+  }
+  #characterToolbarTutorial .ctt-counter {
+    margin: 0 0 8px; color: #466182; font-size: 12px; font-weight: 800;
+  }
+  #characterToolbarTutorial .ctt-title {
+    margin: 0 0 10px; color: #133d7a; font-size: 21px;
+    font-weight: 900; line-height: 1.4; overflow-wrap: anywhere;
+  }
+  #characterToolbarTutorial .ctt-description {
+    margin: 0; color: #344156; font-size: 16px;
+    line-height: 1.75; word-break: keep-all; overflow-wrap: anywhere;
+  }
+  #characterToolbarTutorial .ctt-actions {
+    display: flex; gap: 8px; margin-top: 20px;
+  }
+  #characterToolbarTutorial button {
+    box-sizing: border-box; flex: 1; min-width: 0; min-height: 44px;
+    margin: 0; padding: 10px 12px; border: 1px solid #c2ccda;
+    border-radius: 10px; background: #fff; color: #133d7a;
+    font-family: inherit; font-size: 15px; font-weight: 800;
+    line-height: 1.4; cursor: pointer;
+  }
+  #characterToolbarTutorial .ctt-next {
+    background: #133d7a; border-color: #133d7a; color: #fff;
+  }
+  #characterToolbarTutorial button:disabled { opacity: .4; cursor: default; }
+  #characterToolbarTutorial button:focus-visible {
+    outline: 3px solid #db9f1d; outline-offset: 3px;
+  }
+  @media (max-width: 360px), (max-height: 420px) {
+    #characterToolbarTutorial .ctt-panel { padding: 16px; }
+    #characterToolbarTutorial .ctt-actions { margin-top: 12px; }
+  }
+</style>
+<script>
+(() => {
+  "use strict";
+  // 같은 코드를 두 번 붙여 넣어도 이벤트와 화면은 중복 생성하지 않습니다.
+  if (window.__blackCorridorOnboardingV2) return;
+  window.__blackCorridorOnboardingV2 = true;
+  const CHARACTER_NAME = "강재우"; // 이름 자동 인식. 필요하면 "한도윤"처럼 지정하세요.
+  let introState = "waiting";
+  const path = location.pathname.replace(/\/index\.html$/i, "")
+    .replace(/\/+$/, "") || "/";
+  const character = document.documentElement.dataset.characterId || "";
+  const key = "black-corridor:toolbar-tutorial:v1:" + path + ":" + character;
+  let openedThisPage = false;
+  let pending = false;
+
+  function hasSeen() {
+    if (openedThisPage) return true;
+    for (const name of ["localStorage", "sessionStorage"]) {
+      try { if (window[name].getItem(key) === "1") return true; } catch (_) {}
+    }
+    return false;
+  }
+  function markSeen() {
+    openedThisPage = true;
+    for (const name of ["localStorage", "sessionStorage"]) {
+      try { window[name].setItem(key, "1"); } catch (_) {}
+    }
+  }
+  function visible(element) {
+    if (!element || !element.isConnected || element.closest('[hidden], [aria-hidden="true"]')) return false;
+    const rect = element.getBoundingClientRect();
+    const css = getComputedStyle(element);
+    return rect.width > 0 && rect.height > 0 &&
+      css.display !== "none" && css.visibility !== "hidden" && css.opacity !== "0";
+  }
+
+  const known = {
+    gameManualOpen: ["게임 설명서", "진행 순서나 규칙이 헷갈릴 때 눌러 확인하세요. 게임 중에도 다시 열어 볼 수 있습니다."],
+    cardReaderOpen: ["카드 크게보기", "보유한 실물 카드의 제목을 입력하면 내용을 큰 글자로 읽을 수 있습니다. 등록한 카드는 조사카드와 소지품카드로 나뉘며, 글자 크기도 조절할 수 있습니다. 자신이 보유한 카드만 등록해 주세요."],
+    mapOpen: ["MAP · 지도", "사건 현장 지도를 확인하는 버튼입니다. 장소의 위치를 살펴보거나 동선을 비교할 때 이용하세요."],
+    menuToggle: ["목차", "설정서의 목차를 펼치는 버튼입니다. 원하는 항목을 선택하면 해당 부분으로 이동할 수 있습니다."]
+  };
+  function describe(button) {
+    if (button.dataset.tutorialTitle && button.dataset.tutorialDescription) {
+      return [button.dataset.tutorialTitle, button.dataset.tutorialDescription];
+    }
+    if (known[button.id]) return known[button.id];
+    // 표기가 명확한 글자 크기 버튼만 자동으로 포함합니다.
+    const label = (button.getAttribute("aria-label") || button.title ||
+      button.textContent || "").replace(/\s+/g, "");
+    if (/^(A|가)[+＋]$/i.test(label) || /글자(크기)?(크게|키우기|확대)/.test(label)) {
+      return ["글자 크게", "설정서 본문의 글자 크기를 키웁니다. 읽기 편한 크기로 조절하세요."];
+    }
+    if (/^(A|가)[−–－-]$/i.test(label) || /글자(크기)?(작게|줄이기|축소)/.test(label)) {
+      return ["글자 작게", "설정서 본문의 글자 크기를 줄입니다. 화면에 더 많은 내용을 보고 싶을 때 이용하세요."];
+    }
+    return null;
+  }
+
+  function start() {
+    if (hasSeen() || document.getElementById("characterToolbarTutorial")) return;
+    const row = document.getElementById("gameManualOpen")?.parentElement;
+    if (!row) return;
+    const steps = [...row.querySelectorAll("button, [role='button']")]
+      .filter(visible).map(target => ({ target, text: describe(target) }))
+      .filter(step => step.text);
+    if (!steps.length) return;
+
+    const dialog = document.createElement("dialog");
+    if (typeof dialog.showModal !== "function") return;
+    dialog.id = "characterToolbarTutorial";
+    dialog.setAttribute("aria-labelledby", "cttTitle");
+    dialog.setAttribute("aria-describedby", "cttDescription");
+    dialog.innerHTML = `
+      <div class="ctt-spot" aria-hidden="true"></div>
+      <section class="ctt-panel">
+        <div aria-live="polite" aria-atomic="true">
+          <p class="ctt-counter"></p>
+          <h2 class="ctt-title" id="cttTitle"></h2>
+          <p class="ctt-description" id="cttDescription"></p>
+        </div>
+        <div class="ctt-actions">
+          <button type="button" class="ctt-prev">이전</button>
+          <button type="button" class="ctt-next">다음</button>
+        </div>
+      </section>`;
+    const spot = dialog.querySelector(".ctt-spot");
+    const panel = dialog.querySelector(".ctt-panel");
+    const previous = dialog.querySelector(".ctt-prev");
+    const next = dialog.querySelector(".ctt-next");
+    const originalFocus = document.activeElement;
+    const scrollX = window.scrollX, scrollY = window.scrollY;
+    const root = document.documentElement;
+    const originalOverflow = root.style.overflow;
+    const originalBehavior = root.style.scrollBehavior;
+    let index = 0;
+    let frame = 0;
+    let closed = false;
+
+    function position() {
+      frame = 0;
+      if (closed) return;
+      const target = steps[index].target;
+      const rect = target.getBoundingClientRect();
+      const viewport = window.visualViewport;
+      const left = viewport?.offsetLeft || 0;
+      const top = viewport?.offsetTop || 0;
+      const width = viewport?.width || window.innerWidth;
+      const height = viewport?.height || window.innerHeight;
+      const pad = 12;
+      spot.style.left = (rect.left - 4) + "px";
+      spot.style.top = (rect.top - 4) + "px";
+      spot.style.width = (rect.width + 8) + "px";
+      spot.style.height = (rect.height + 8) + "px";
+      spot.style.borderRadius = getComputedStyle(target).borderRadius;
+      panel.style.width = Math.min(360, width - pad * 2) + "px";
+      const below = Math.max(top + pad, rect.bottom + 16);
+      const spaceBelow = top + height - pad - below;
+      const spaceAbove = rect.top - 16 - (top + pad);
+      const useBelow = spaceBelow >= 210 || spaceBelow >= spaceAbove;
+      panel.style.maxHeight = Math.max(80, useBelow ? spaceBelow : spaceAbove) + "px";
+      const panelRect = panel.getBoundingClientRect();
+      panel.style.left = Math.max(left + pad, Math.min(
+        rect.left + rect.width / 2 - panelRect.width / 2,
+        left + width - panelRect.width - pad
+      )) + "px";
+      panel.style.top = (useBelow ? below : Math.max(
+        top + pad, rect.top - 16 - panelRect.height
+      )) + "px";
+    }
+    function schedulePosition() {
+      if (!frame) frame = requestAnimationFrame(position);
+    }
+    function showStep() {
+      const step = steps[index];
+      if (!visible(step.target)) { finish(); return; }
+      step.target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+      dialog.querySelector(".ctt-counter").textContent =
+        "처음 사용하는 분을 위한 안내 · " + (index + 1) + " / " + steps.length;
+      dialog.querySelector(".ctt-title").textContent = step.text[0];
+      dialog.querySelector(".ctt-description").textContent = step.text[1];
+      previous.disabled = index === 0;
+      next.textContent = index === steps.length - 1 ? "설정서 읽기" : "다음";
+      panel.scrollTop = 0;
+      position();
+      next.focus({ preventScroll: true });
+    }
+    function finish() {
+      if (closed) return;
+      closed = true;
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.removeEventListener("resize", schedulePosition);
+      window.removeEventListener("scroll", schedulePosition, true);
+      window.visualViewport?.removeEventListener("resize", schedulePosition);
+      window.visualViewport?.removeEventListener("scroll", schedulePosition);
+      dialog.close();
+      dialog.remove();
+      root.style.overflow = originalOverflow;
+      window.scrollTo({ left: scrollX, top: scrollY, behavior: "instant" });
+      root.style.scrollBehavior = originalBehavior;
+      const focus = visible(originalFocus) && originalFocus !== document.body
+        ? originalFocus : steps[0].target;
+      focus?.focus({ preventScroll: true });
+    }
+    previous.addEventListener("click", () => { if (index > 0) { index--; showStep(); } });
+    next.addEventListener("click", () => {
+      if (index === steps.length - 1) finish();
+      else { index++; showStep(); }
+    });
+    dialog.addEventListener("cancel", event => { event.preventDefault(); finish(); });
+    dialog.addEventListener("close", finish);
+    // 바깥을 눌러도 닫히지 않으며, 배경의 버튼도 실행되지 않습니다.
+    dialog.addEventListener("keydown", event => {
+      if (event.key === "Tab") {
+        const buttons = [previous, next].filter(button => !button.disabled);
+        if (event.shiftKey && document.activeElement === buttons[0]) {
+          event.preventDefault(); buttons[buttons.length - 1].focus();
+        } else if (!event.shiftKey && document.activeElement === buttons[buttons.length - 1]) {
+          event.preventDefault(); buttons[0].focus();
+        }
+      }
+      event.stopPropagation();
+    });
+    const observer = typeof ResizeObserver === "function"
+      ? new ResizeObserver(schedulePosition) : null;
+    document.body.append(dialog);
+    try { dialog.showModal(); }
+    catch (_) { dialog.remove(); return; }
+    markSeen();
+    root.style.overflow = "hidden";
+    root.style.scrollBehavior = "auto";
+    observer?.observe(row);
+    window.addEventListener("resize", schedulePosition, { passive: true });
+    window.addEventListener("scroll", schedulePosition, { passive: true, capture: true });
+    window.visualViewport?.addEventListener("resize", schedulePosition, { passive: true });
+    window.visualViewport?.addEventListener("scroll", schedulePosition, { passive: true });
+    showStep();
+  }
+
+  // 이전 버전과의 호환 API. 시작 안내 확인 전에는 튜토리얼이 실행되지 않습니다.
+  window.startCharacterToolbarTutorial = () => {
+    if (introState !== "ready" || pending || hasSeen()) return;
+    pending = true;
+    const enqueue = () => requestAnimationFrame(() => requestAnimationFrame(() => {
+      pending = false;
+      start();
+    }));
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", enqueue, { once: true });
+    } else enqueue();
+  };
+
+  function detectCharacterName() {
+    if (CHARACTER_NAME.trim()) return CHARACTER_NAME.trim();
+    const explicit = document.documentElement.dataset.characterName ||
+      document.querySelector("[data-character-name]")?.dataset.characterName;
+    if (explicit?.trim()) return explicit.trim();
+    const candidates = [document.title, ...[...document.querySelectorAll(
+      "h1, .character-name, .profile-name"
+    )].map(element => element.textContent)];
+    const names = ["한도윤", "차민서", "서이안", "백유라", "강재우", "문해준"];
+    for (const text of candidates) {
+      const matches = names.filter(name => text.includes(name));
+      if (matches.length === 1) return matches[0];
+    }
+    return "";
+  }
+
+  function continueToTutorial() {
+    introState = "ready";
+    window.startCharacterToolbarTutorial();
+  }
+
+  function findExistingIntro() {
+    const selectors = [
+      "[data-character-start-popup]", "dialog[open]", '[role="dialog"]',
+      '[role="alertdialog"]', ".modal", ".overlay", ".popup", ".start",
+      '[id*="intro" i]', '[id*="welcome" i]', '[id*="startModal" i]',
+      '[id*="noticeModal" i]'
+    ].join(",");
+    return [...document.querySelectorAll(selectors)].find(element => {
+      if (!visible(element) || element.id === "cardReader" ||
+          element.closest("#cardReader, #characterToolbarTutorial, #characterStartNotice")) return false;
+      if (element.hasAttribute("data-character-start-popup")) return true;
+      const text = element.textContent.replace(/\s+/g, "");
+      return text.length < 2500 && /캐릭터설정서/.test(text) &&
+        /(당신|본인|담당|비밀|열람|읽기|확인|주의)/.test(text) &&
+        [...element.querySelectorAll('button, [role="button"], input[type="button"]')].some(visible);
+    });
+  }
+
+  function waitForExistingIntro(popup) {
+    introState = "existing";
+    let finished = false;
+    function check() {
+      if (finished || visible(popup)) return;
+      finished = true;
+      observer.disconnect();
+      document.removeEventListener("transitionend", check, true);
+      document.removeEventListener("animationend", check, true);
+      popup.removeEventListener("close", check);
+      continueToTutorial();
+    }
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, {
+      subtree: true, childList: true, attributes: true,
+      attributeFilter: ["hidden", "class", "style", "open", "aria-hidden"]
+    });
+    document.addEventListener("transitionend", check, true);
+    document.addEventListener("animationend", check, true);
+    popup.addEventListener("close", check);
+    check();
+  }
+
+  function createStartNotice() {
+    introState = "created";
+    const name = detectCharacterName();
+    const dialog = document.createElement("dialog");
+    dialog.id = "characterStartNotice";
+    dialog.setAttribute("aria-labelledby", "csnTitle");
+    dialog.setAttribute("aria-describedby", "csnIdentity csnPrivate");
+    dialog.innerHTML = `
+      <p class="csn-label">검은 복도 · 캐릭터 설정서</p>
+      <h2 id="csnTitle"></h2>
+      <p id="csnIdentity"></p>
+      <p class="csn-private" id="csnPrivate">설정서에는 당신만 아는 정보가 담겨 있습니다. 다른 플레이어에게 화면을 직접 보여주지 마세요.</p>
+      <p class="csn-help"></p>
+      <button type="button">확인하고 시작하기</button>`;
+    dialog.querySelector("h2").textContent = name ? name + "의 캐릭터 설정서" : "캐릭터 설정서 안내";
+    dialog.querySelector("#csnIdentity").textContent = name
+      ? "이 페이지는 ‘" + name + "’의 캐릭터 설정서입니다. 자신이 맡은 캐릭터가 맞는지 확인해 주세요."
+      : "이 페이지는 담당 캐릭터의 설정서입니다. 페이지 제목의 이름이 자신이 맡은 캐릭터와 일치하는지 확인해 주세요.";
+    dialog.querySelector(".csn-help").textContent = hasSeen()
+      ? "확인 후 설정서를 읽으며 게임을 진행해 주세요."
+      : "확인 후 상단 버튼의 사용법을 짧게 안내합니다. 사용법 안내는 처음 한 번만 표시됩니다.";
+    const root = document.documentElement;
+    const oldOverflow = root.style.overflow;
+    const button = dialog.querySelector("button");
+    let confirmed = false;
+    function confirm() {
+      if (confirmed) return;
+      confirmed = true;
+      root.style.overflow = oldOverflow;
+      if (dialog.open) dialog.close();
+      dialog.remove();
+      document.getElementById("gameManualOpen")?.focus({ preventScroll: true });
+      continueToTutorial();
+    }
+    button.addEventListener("click", confirm);
+    dialog.addEventListener("cancel", event => {
+      event.preventDefault(); button.focus({ preventScroll: true });
+    });
+    dialog.addEventListener("keydown", event => {
+      if (event.key === "Tab") { event.preventDefault(); button.focus(); }
+      event.stopPropagation();
+    });
+    document.body.append(dialog);
+    root.style.overflow = "hidden";
+    dialog.showModal();
+    button.focus({ preventScroll: true });
+  }
+
+  function boot() {
+    if (introState !== "waiting") return;
+    const existing = findExistingIntro();
+    if (existing) waitForExistingIntro(existing);
+    else createStartNotice();
+  }
+  // 기존 DOMContentLoaded/load 초기화가 끝난 뒤 시작 안내 유무를 판단합니다.
+  function queueBoot() {
+    requestAnimationFrame(() => requestAnimationFrame(boot));
+  }
+  if (document.readyState === "complete") queueBoot();
+  else window.addEventListener("load", queueBoot, { once: true });
+
+})();
+</script>
 </body>
 </html>
